@@ -7,10 +7,7 @@ require (
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/micro/go-micro/v2 v2.9.1
 	github.com/miekg/dns v1.1.35 // indirect
-	github.com/opentracing/opentracing-go v1.1.0
-	go.opencensus.io v0.22.0 // indirect
 	go.opentelemetry.io/otel v0.15.0
-	go.opentelemetry.io/otel/sdk v0.15.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a // indirect
