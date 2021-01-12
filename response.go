@@ -1,4 +1,4 @@
-package main
+package opentelemetry
 
 import (
 	"go.opentelemetry.io/otel/label"

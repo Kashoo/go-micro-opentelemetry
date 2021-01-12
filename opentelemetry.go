@@ -1,4 +1,4 @@
-package main
+package opentelemetry
 
 import (
 	"context"
@@ -24,7 +24,6 @@ type otWrapper struct {
 	ot trace.Tracer
 	client.Client
 }
-func main() {}
 
 //// StartSpanFromContext returns a new span with the given operation name and options. If a span
 //// is found in the context, it will be used as the parent of the resulting span.
