@@ -17,7 +17,7 @@ const (
 	// TracePropagationField is the key for the tracing context
 	// that will be injected in go-micro's metadata.
 	TracePropagationField = "X-Trace-Context"
-	SpanPropagationField = "X-Span-Context"
+	SpanPropagationField  = "X-Span-Context"
 )
 
 type otWrapper struct {
@@ -76,7 +76,6 @@ func getTraceSpanCtx(ctx context.Context) *trace.SpanContext {
 		}
 	}
 
-
 	return nil
 }
 
@@ -97,7 +96,6 @@ func stringToSpanID(str string) trace.SpanID {
 	}
 	return b
 }
-
 
 //func (o *otWrapper) Call(ctx context.Context, req client.Request, rsp interface{}, opts ...client.CallOption) error {
 //	name := fmt.Sprintf("%s.%s", req.Service(), req.Endpoint())
@@ -191,25 +189,21 @@ func NewCallWrapper(ot trace.Tracer, name string) client.CallWrapper {
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 
-
-			ctx, t.span  = t.tracer.Start(ctx,
+			ctx, t.span = t.tracer.Start(ctx,
 				name,
 			)
 
-
-
-			if err = cf(ctx, node, req, rsp, opts ); err != nil {
+			if err = cf(ctx, node, req, rsp, opts); err != nil {
 				t.span.AddEvent(
 					"",
 					trace.WithAttributes(label.String("error", err.Error())))
 				t.span.SetAttributes(label.String("error", err.Error()))
 
 			}
-			return 
+			return
 		}
 	}
 }
-
 
 func NewHandlerWrapper(ot trace.Tracer) server.HandlerWrapper {
 	return func(fn server.HandlerFunc) server.HandlerFunc {
@@ -219,14 +213,11 @@ func NewHandlerWrapper(ot trace.Tracer) server.HandlerWrapper {
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 
-
-			ctx, t.span  = t.tracer.Start(ctx,
+			ctx, t.span = t.tracer.Start(ctx,
 				name,
 			)
 
-
-
-			if err = fn(ctx, req, rsp ); err != nil {
+			if err = fn(ctx, req, rsp); err != nil {
 				t.span.AddEvent(
 					"",
 					trace.WithAttributes(label.String("error", err.Error())))
@@ -247,12 +238,9 @@ func NewSubscriberWrapper(ot trace.Tracer) server.SubscriberWrapper {
 			defer func() { t.end(ctx, err) }()
 
 			name := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
-			ctx, t.span  = t.tracer.Start(ctx,
+			ctx, t.span = t.tracer.Start(ctx,
 				name,
 			)
-
-
-
 
 			if err = fn(ctx, p); err != nil {
 				t.span.AddEvent(
@@ -265,4 +253,3 @@ func NewSubscriberWrapper(ot trace.Tracer) server.SubscriberWrapper {
 		}
 	}
 }
-

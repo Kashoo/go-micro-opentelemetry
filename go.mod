@@ -1,4 +1,4 @@
-module go-micro-opentelemetry
+module github.com/domgolonka/go-micro-opentelemetry
 
 go 1.15
 
