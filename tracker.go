@@ -3,15 +3,15 @@ package opentelemetry
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel/trace"
+	apitracer "go.opentelemetry.io/otel/api/trace"
 	"time"
 )
 
 type tracker struct {
 	startedAt time.Time
-	tracer trace.Tracer
+	tracer apitracer.Tracer
 	//profile *StatsProfile
-	span    trace.Span
+	span    apitracer.Span
 
 	method  string
 	service string
@@ -23,7 +23,7 @@ type requestDescriptor interface {
 }
 
 // newRequestTracker creates a new tracker for an RPC request (client or server).
-func newRequestTracker(req requestDescriptor, tracer trace.Tracer) *tracker {
+func newRequestTracker(req requestDescriptor, tracer apitracer.Tracer) *tracker {
 	return &tracker{
 		tracer: tracer,
 		//profile: profile,
@@ -37,7 +37,7 @@ type publicationDescriptor interface {
 }
 
 // newEventTracker creates a new tracker for a publication (client or server).
-func newEventTracker(pub publicationDescriptor, tracer trace.Tracer) *tracker {
+func newEventTracker(pub publicationDescriptor, tracer apitracer.Tracer) *tracker {
 	return &tracker{
 		tracer: tracer,
 		//profile: profile,

@@ -2,15 +2,12 @@ package opentelemetry
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/metadata"
 	"github.com/micro/go-micro/v2/registry"
 	"github.com/micro/go-micro/v2/server"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const (
@@ -20,10 +17,6 @@ const (
 	SpanPropagationField  = "X-Span-Context"
 )
 
-type otWrapper struct {
-	ot trace.Tracer
-	client.Client
-}
 
 //// StartSpanFromContext returns a new span with the given operation name and options. If a span
 //// is found in the context, it will be used as the parent of the resulting span.
@@ -65,37 +58,37 @@ type otWrapper struct {
 //	return ctx, sp, nil
 //}
 
-func getTraceSpanCtx(ctx context.Context) *trace.SpanContext {
-	spanID, _ := metadata.Get(ctx, SpanPropagationField)
-	traceID, _ := metadata.Get(ctx, TracePropagationField)
+//func getTraceSpanCtx(ctx context.Context) *trace.SpanContext {
+//	spanID, _ := metadata.Get(ctx, SpanPropagationField)
+//	traceID, _ := metadata.Get(ctx, TracePropagationField)
+//
+//	if len(traceID) > 0 && len(spanID) > 0 {
+//		return &trace.SpanContext{
+//			TraceID: stringToTraceID(traceID),
+//			SpanID:  stringToSpanID(spanID),
+//		}
+//	}
+//
+//	return nil
+//}
 
-	if len(traceID) > 0 && len(spanID) > 0 {
-		return &trace.SpanContext{
-			TraceID: stringToTraceID(traceID),
-			SpanID:  stringToSpanID(spanID),
-		}
-	}
+//func stringToTraceID(str string) trace.TraceID {
+//	data, _ := hex.DecodeString(str)
+//	var b [16]byte = [16]byte{}
+//	for k, v := range data[:16] {
+//		b[k] = v
+//	}
+//	return b
+//}
 
-	return nil
-}
-
-func stringToTraceID(str string) trace.TraceID {
-	data, _ := hex.DecodeString(str)
-	var b [16]byte = [16]byte{}
-	for k, v := range data[:16] {
-		b[k] = v
-	}
-	return b
-}
-
-func stringToSpanID(str string) trace.SpanID {
-	data, _ := hex.DecodeString(str)
-	var b [8]byte = [8]byte{}
-	for k, v := range data[:8] {
-		b[k] = v
-	}
-	return b
-}
+//func stringToSpanID(str string) trace.SpanID {
+//	data, _ := hex.DecodeString(str)
+//	var b [8]byte = [8]byte{}
+//	for k, v := range data[:8] {
+//		b[k] = v
+//	}
+//	return b
+//}
 
 //func (o *otWrapper) Call(ctx context.Context, req client.Request, rsp interface{}, opts ...client.CallOption) error {
 //	name := fmt.Sprintf("%s.%s", req.Service(), req.Endpoint())
@@ -148,14 +141,14 @@ func stringToSpanID(str string) trace.SpanID {
 //}
 
 // NewClientWrapper accepts an open tracing Trace and returns a Client Wrapper
-func NewClientWrapper(ot trace.Tracer, name string) client.Wrapper {
-	return func(c client.Client) client.Client {
-		if ot == nil {
-			ot = otel.Tracer(name)
-		}
-		return &otWrapper{ot, c}
-	}
-}
+//func NewClientWrapper(ot trace.Tracer, name string) client.Wrapper {
+//	return func(c client.Client) client.Client {
+//		if ot == nil {
+//			ot = otel.Tracer(name)
+//		}
+//		return &otWrapper{ot, c}
+//	}
+//}
 
 // NewCallWrapper accepts an opentelemetry Tracer and returns a Call Wrapper
 //func NewCallWrapper(ot trace.Tracer, name string) client.CallWrapper {
@@ -181,22 +174,24 @@ func NewClientWrapper(ot trace.Tracer, name string) client.Wrapper {
 //		}
 //	}
 //}
-func NewCallWrapper(ot trace.Tracer, name string) client.CallWrapper {
+func NewCallWrapper(ot *sdktrace.TracerProvider) client.CallWrapper {
 	return func(cf client.CallFunc) client.CallFunc {
 		return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) (err error) {
 			name := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
-			t := newRequestTracker(req, ot)
+			tracer := ot.Tracer(name)
+			t := newRequestTracker(req, tracer)
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
-
-			ctx, t.span = t.tracer.Start(ctx,
+			ctx, t.span = tracer.Start(
+				ctx,
 				name,
 			)
 
 			if err = cf(ctx, node, req, rsp, opts); err != nil {
 				t.span.AddEvent(
-					"",
-					trace.WithAttributes(label.String("error", err.Error())))
+					ctx,
+					name,
+					label.String("error", err.Error()))
 				t.span.SetAttributes(label.String("error", err.Error()))
 
 			}
@@ -205,11 +200,12 @@ func NewCallWrapper(ot trace.Tracer, name string) client.CallWrapper {
 	}
 }
 
-func NewHandlerWrapper(ot trace.Tracer) server.HandlerWrapper {
+func NewHandlerWrapper(ot *sdktrace.TracerProvider) server.HandlerWrapper {
 	return func(fn server.HandlerFunc) server.HandlerFunc {
 		return func(ctx context.Context, req server.Request, rsp interface{}) (err error) {
 			name := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
-			t := newRequestTracker(req, ot)
+			tracer := ot.Tracer(name)
+			t := newRequestTracker(req, tracer)
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 
@@ -219,8 +215,9 @@ func NewHandlerWrapper(ot trace.Tracer) server.HandlerWrapper {
 
 			if err = fn(ctx, req, rsp); err != nil {
 				t.span.AddEvent(
-					"",
-					trace.WithAttributes(label.String("error", err.Error())))
+					ctx,
+					name,
+					label.String("error", err.Error()))
 				t.span.SetAttributes(label.String("error", err.Error()))
 
 			}
@@ -230,22 +227,25 @@ func NewHandlerWrapper(ot trace.Tracer) server.HandlerWrapper {
 }
 
 // NewSubscriberWrapper accepts an opentelemetry Tracer and returns a Subscriber Wrapper
-func NewSubscriberWrapper(ot trace.Tracer) server.SubscriberWrapper {
+func NewSubscriberWrapper(ot *sdktrace.TracerProvider) server.SubscriberWrapper {
 	return func(fn server.SubscriberFunc) server.SubscriberFunc {
 		return func(ctx context.Context, p server.Message) (err error) {
-			t := newEventTracker(p, ot)
+			name := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
+			tracer := ot.Tracer(name)
+			t := newEventTracker(p, tracer)
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 
-			name := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
+
 			ctx, t.span = t.tracer.Start(ctx,
 				name,
 			)
 
 			if err = fn(ctx, p); err != nil {
 				t.span.AddEvent(
-					"",
-					trace.WithAttributes(label.String("error", err.Error())))
+					ctx,
+					name,
+					label.String("error", err.Error()))
 				t.span.SetAttributes(label.String("error", err.Error()))
 
 			}
