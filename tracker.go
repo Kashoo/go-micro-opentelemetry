@@ -9,12 +9,10 @@ import (
 
 type tracker struct {
 	startedAt time.Time
-	tracer apitracer.Tracer
-	//profile *StatsProfile
-	span    apitracer.Span
-
-	method  string
-	service string
+	tracer    apitracer.Tracer
+	span      apitracer.Span
+	method    string
+	service   string
 }
 
 type requestDescriptor interface {
@@ -73,7 +71,7 @@ func (t *tracker) end(ctx context.Context, err error) {
 	//stats.Record(ctx, t.profile.LatencyMeasure.M(float64(time.Since(t.startedAt))/float64(time.Millisecond)))
 
 	if t.span != nil {
-		setResponseStatus(t.span,err, "")
+		setResponseStatus(t.span, err, "")
 		//t.span.SetStatus(status)
 		t.span.End()
 	}
