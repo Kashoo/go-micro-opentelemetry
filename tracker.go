@@ -24,7 +24,6 @@ type requestDescriptor interface {
 func newRequestTracker(req requestDescriptor, tracer apitracer.Tracer) *tracker {
 	return &tracker{
 		tracer: tracer,
-		//profile: profile,
 		method:  req.Endpoint(),
 		service: req.Service(),
 	}
@@ -38,7 +37,6 @@ type publicationDescriptor interface {
 func newEventTracker(pub publicationDescriptor, tracer apitracer.Tracer) *tracker {
 	return &tracker{
 		tracer: tracer,
-		//profile: profile,
 		method:  pub.Topic(),
 		service: "pubsub",
 	}
@@ -49,8 +47,6 @@ func newEventTracker(pub publicationDescriptor, tracer apitracer.Tracer) *tracke
 func (t *tracker) start(ctx context.Context, startSpan bool) context.Context {
 	t.startedAt = time.Now()
 
-	//ctx, _ = tag.New(ctx, tag.Upsert(Service, t.service), tag.Upsert(Endpoint, t.method))
-	//stats.Record(ctx, t.profile.CountMeasure.M(1))
 
 	if startSpan {
 		ctx, t.span = t.tracer.Start(
@@ -65,14 +61,8 @@ func (t *tracker) start(ctx context.Context, startSpan bool) context.Context {
 // end a request's monitoring session. If there is a span ongoing, it will
 // be ended and metrics will be recorded.
 func (t *tracker) end(ctx context.Context, err error) {
-	//status := getResponseStatus(err)
-
-	//ctx, _ = tag.New(ctx, tag.Upsert(StatusCode, strconv.Itoa(int(status.Code))))
-	//stats.Record(ctx, t.profile.LatencyMeasure.M(float64(time.Since(t.startedAt))/float64(time.Millisecond)))
-
 	if t.span != nil {
 		setResponseStatus(t.span, err, "")
-		//t.span.SetStatus(status)
 		t.span.End()
 	}
 }
