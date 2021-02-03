@@ -3,14 +3,14 @@ package opentelemetry
 import (
 	"context"
 	"fmt"
-	apitracer "go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel/trace"
 	"time"
 )
 
 type tracker struct {
 	startedAt time.Time
-	tracer    apitracer.Tracer
-	span      apitracer.Span
+	tracer    trace.Tracer
+	span      trace.Span
 	method    string
 	service   string
 }
@@ -21,9 +21,9 @@ type requestDescriptor interface {
 }
 
 // newRequestTracker creates a new tracker for an RPC request (client or server).
-func newRequestTracker(req requestDescriptor, tracer apitracer.Tracer) *tracker {
+func newRequestTracker(req requestDescriptor, tracer trace.Tracer) *tracker {
 	return &tracker{
-		tracer: tracer,
+		tracer:  tracer,
 		method:  req.Endpoint(),
 		service: req.Service(),
 	}
@@ -34,9 +34,9 @@ type publicationDescriptor interface {
 }
 
 // newEventTracker creates a new tracker for a publication (client or server).
-func newEventTracker(pub publicationDescriptor, tracer apitracer.Tracer) *tracker {
+func newEventTracker(pub publicationDescriptor, tracer trace.Tracer) *tracker {
 	return &tracker{
-		tracer: tracer,
+		tracer:  tracer,
 		method:  pub.Topic(),
 		service: "pubsub",
 	}
@@ -46,7 +46,6 @@ func newEventTracker(pub publicationDescriptor, tracer apitracer.Tracer) *tracke
 // start a span for the request or attach one later.
 func (t *tracker) start(ctx context.Context, startSpan bool) context.Context {
 	t.startedAt = time.Now()
-
 
 	if startSpan {
 		ctx, t.span = t.tracer.Start(
