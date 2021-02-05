@@ -7,22 +7,49 @@ import (
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/registry"
 	"github.com/micro/go-micro/v2/server"
+	"go.opentelemetry.io/contrib"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-func NewCallWrapper(ot trace.TracerProvider) client.CallWrapper {
+const instrumentationName = "github.com/Kashoo/go-micro-opentelemetry"
+
+func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.TracerProvider == nil {
+		cfg.TracerProvider = otel.GetTracerProvider()
+	}
+
+	if cfg.Propagators == nil {
+		cfg.Propagators = otel.GetTextMapPropagator()
+	}
+	tracer := cfg.TracerProvider.Tracer(
+		instrumentationName,
+		oteltrace.WithInstrumentationVersion(contrib.SemVersion()),
+	)
 	return func(cf client.CallFunc) client.CallFunc {
 		return func(ctx context.Context, node *registry.Node, req client.Request, rsp interface{}, opts client.CallOptions) (err error) {
-			name := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
-			tracer := ot.Tracer(name)
+
+			topts := []oteltrace.SpanOption{
+				oteltrace.WithAttributes(label.String("service", servicename)),
+				//oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(request)...),
+				//oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.Path(), request)...),
+				oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+			}
 
 			t := newRequestTracker(req, tracer)
 			ctx = t.start(ctx, false)
+
+			spanName := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
 			defer func() { t.end(ctx, err) }()
 			ctx, t.span = tracer.Start(
 				ctx,
-				name,
+				spanName,
+				topts...,
 			)
 
 			if err = cf(ctx, node, req, rsp, opts); err != nil {
@@ -30,7 +57,7 @@ func NewCallWrapper(ot trace.TracerProvider) client.CallWrapper {
 					scope.SetExtra("trace", t.span.SpanContext().TraceID)
 				})
 				t.span.AddEvent(
-					name,
+					spanName,
 				)
 				t.span.SetAttributes(label.String("error", err.Error()))
 			}
@@ -39,17 +66,39 @@ func NewCallWrapper(ot trace.TracerProvider) client.CallWrapper {
 	}
 }
 
-func NewHandlerWrapper(ot trace.TracerProvider) server.HandlerWrapper {
+func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.TracerProvider == nil {
+		cfg.TracerProvider = otel.GetTracerProvider()
+	}
+
+	if cfg.Propagators == nil {
+		cfg.Propagators = otel.GetTextMapPropagator()
+	}
+	tracer := cfg.TracerProvider.Tracer(
+		instrumentationName,
+		oteltrace.WithInstrumentationVersion(contrib.SemVersion()),
+	)
 	return func(fn server.HandlerFunc) server.HandlerFunc {
 		return func(ctx context.Context, req server.Request, rsp interface{}) (err error) {
-			name := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
-			tracer := ot.Tracer(name)
+
 			t := newRequestTracker(req, tracer)
+			topts := []oteltrace.SpanOption{
+				oteltrace.WithAttributes(label.String("service", servicename)),
+				//oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(request)...),
+				//oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.Path(), request)...),
+				oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+			}
+
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
-
+			spanName := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
 			ctx, t.span = t.tracer.Start(ctx,
-				name,
+				spanName,
+				topts...,
 			)
 
 			if err = fn(ctx, req, rsp); err != nil {
@@ -57,7 +106,7 @@ func NewHandlerWrapper(ot trace.TracerProvider) server.HandlerWrapper {
 					scope.SetExtra("trace", t.span.SpanContext().TraceID)
 				})
 				t.span.AddEvent(
-					name,
+					spanName,
 				)
 				t.span.SetAttributes(label.String("error", err.Error()))
 
@@ -68,17 +117,38 @@ func NewHandlerWrapper(ot trace.TracerProvider) server.HandlerWrapper {
 }
 
 // NewSubscriberWrapper accepts an opentelemetry Tracer and returns a Subscriber Wrapper
-func NewSubscriberWrapper(ot trace.TracerProvider) server.SubscriberWrapper {
+func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberWrapper {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.TracerProvider == nil {
+		cfg.TracerProvider = otel.GetTracerProvider()
+	}
+
+	if cfg.Propagators == nil {
+		cfg.Propagators = otel.GetTextMapPropagator()
+	}
+	tracer := cfg.TracerProvider.Tracer(
+		instrumentationName,
+		oteltrace.WithInstrumentationVersion(contrib.SemVersion()),
+	)
 	return func(fn server.SubscriberFunc) server.SubscriberFunc {
 		return func(ctx context.Context, p server.Message) (err error) {
-			name := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
-			tracer := ot.Tracer(name)
+
 			t := newEventTracker(p, tracer)
+			topts := []oteltrace.SpanOption{
+				oteltrace.WithAttributes(label.String("service", servicename)),
+				//oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(request)...),
+				//oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.Path(), request)...),
+				oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+			}
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
-
+			spanName := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
 			ctx, t.span = t.tracer.Start(ctx,
-				name,
+				spanName,
+				topts...,
 			)
 
 			if err = fn(ctx, p); err != nil {
@@ -86,7 +156,7 @@ func NewSubscriberWrapper(ot trace.TracerProvider) server.SubscriberWrapper {
 					scope.SetExtra("trace", t.span.SpanContext().TraceID)
 				})
 				t.span.AddEvent(
-					name)
+					spanName)
 				t.span.SetAttributes(label.String("error", err.Error()))
 
 			}
