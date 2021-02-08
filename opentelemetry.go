@@ -3,7 +3,6 @@ package opentelemetry
 import (
 	"context"
 	"fmt"
-	"github.com/getsentry/sentry-go"
 	"github.com/micro/go-micro/v2/client"
 	"github.com/micro/go-micro/v2/registry"
 	"github.com/micro/go-micro/v2/server"
@@ -53,9 +52,7 @@ func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
 			)
 
 			if err = cf(ctx, node, req, rsp, opts); err != nil {
-				sentry.ConfigureScope(func(scope *sentry.Scope) {
-					scope.SetExtra("trace", t.span.SpanContext().TraceID)
-				})
+
 				t.span.AddEvent(
 					spanName,
 				)
@@ -102,9 +99,6 @@ func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper
 			)
 
 			if err = fn(ctx, req, rsp); err != nil {
-				sentry.ConfigureScope(func(scope *sentry.Scope) {
-					scope.SetExtra("trace", t.span.SpanContext().TraceID)
-				})
 				t.span.AddEvent(
 					spanName,
 				)
@@ -152,9 +146,6 @@ func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberW
 			)
 
 			if err = fn(ctx, p); err != nil {
-				sentry.ConfigureScope(func(scope *sentry.Scope) {
-					scope.SetExtra("trace", t.span.SpanContext().TraceID)
-				})
 				t.span.AddEvent(
 					spanName)
 				t.span.SetAttributes(label.String("error", err.Error()))
