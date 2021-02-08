@@ -3,6 +3,7 @@ module github.com/Kashoo/go-micro-opentelemetry
 go 1.15
 
 require (
+	github.com/asim/go-micro/v3 v3.5.0 // indirect
 	github.com/getsentry/sentry-go v0.6.2-0.20200707113342-e7c66ce62664
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/google/uuid v1.2.0 // indirect

@@ -2,7 +2,7 @@ package opentelemetry
 
 import (
 	"context"
-	"github.com/micro/go-micro/v2/metadata"
+	"github.com/asim/go-micro/v3/metadata"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/label"
