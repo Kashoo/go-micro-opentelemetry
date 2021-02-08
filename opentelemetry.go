@@ -38,7 +38,7 @@ func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
 				oteltrace.WithAttributes(label.String("service", servicename)),
 				//oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(request)...),
 				//oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.Path(), request)...),
-				oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+				oteltrace.WithSpanKind(oteltrace.SpanKindClient),
 			}
 
 			t := newRequestTracker(req, tracer)
@@ -90,7 +90,7 @@ func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper
 				oteltrace.WithAttributes(label.String("service", servicename)),
 				//oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(request)...),
 				//oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.Path(), request)...),
-				oteltrace.WithSpanKind(oteltrace.SpanKindServer),
+				oteltrace.WithSpanKind(oteltrace.SpanKindInternal),
 			}
 
 			ctx = t.start(ctx, false)
