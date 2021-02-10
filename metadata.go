@@ -31,8 +31,15 @@ func (s *metadataSupplier) Set(key string, value string) {
 // Inject injects correlation context and span context into the go-micro
 // metadata object. This function is meant to be used on outgoing
 // requests.
-func Inject(ctx context.Context, metadata *metadata.Metadata) {
-	otel.GetTextMapPropagator().Inject(ctx, &metadataSupplier{
+func Inject(ctx context.Context, metadata *metadata.Metadata, opts ...Option) {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.Propagators == nil {
+		cfg.Propagators = otel.GetTextMapPropagator()
+	}
+	cfg.Propagators.Inject(ctx, &metadataSupplier{
 		metadata: metadata,
 	})
 }
@@ -40,8 +47,15 @@ func Inject(ctx context.Context, metadata *metadata.Metadata) {
 // Extract returns the correlation context and span context that
 // another service encoded in the go-micro metadata object with Inject.
 // This function is meant to be used on incoming requests.
-func Extract(ctx context.Context, metadata *metadata.Metadata) ([]label.KeyValue, trace.SpanContext) {
-	ctx = otel.GetTextMapPropagator().Extract(ctx, &metadataSupplier{
+func Extract(ctx context.Context, metadata *metadata.Metadata, opts ...Option) ([]label.KeyValue, trace.SpanContext) {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.Propagators == nil {
+		cfg.Propagators = otel.GetTextMapPropagator()
+	}
+	ctx = cfg.Propagators.Extract(ctx, &metadataSupplier{
 		metadata: metadata,
 	})
 	labelSet := baggage.Set(ctx)
