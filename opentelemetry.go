@@ -4,16 +4,14 @@ import (
 	"context"
 	"fmt"
 	"github.com/asim/go-micro/v3/client"
+	"github.com/asim/go-micro/v3/logger"
 	"github.com/asim/go-micro/v3/metadata"
 	"github.com/asim/go-micro/v3/registry"
 	"github.com/asim/go-micro/v3/server"
 	"go.opentelemetry.io/contrib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/semconv"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"net"
-	"strings"
 )
 
 const instrumentationName = "github.com/Kashoo/go-micro-opentelemetry"
@@ -128,12 +126,14 @@ func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
 			defer func() { t.end(ctx, err) }()
 			spanCtx := getTraceFromCtx(ctx)
 			if spanCtx.IsValid() {
+				logger.Errorf("CALL METHOD VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
 					spanName,
 					topts...,
 				)
 			} else {
+				logger.Errorf("CALL METHOD NOT VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					ctx,
 					spanName,
@@ -185,12 +185,14 @@ func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper
 			spanName := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
 			spanCtx := getTraceFromCtx(ctx)
 			if spanCtx.IsValid() {
+				logger.Errorf("HANDLER METHOD VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
 					spanName,
 					topts...,
 				)
 			} else {
+				logger.Errorf("HANDLER METHOD NOT VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					ctx,
 					spanName,
@@ -241,12 +243,14 @@ func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberW
 			spanName := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
 			spanCtx := getTraceFromCtx(ctx)
 			if spanCtx.IsValid() {
+				logger.Errorf("SUBSCRIBE METHOD VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
 					spanName,
 					topts...,
 				)
 			} else {
+				logger.Errorf("SUBSCRIBE METHOD NOT VALID, %v", spanCtx)
 				ctx, t.span = tracer.Start(
 					ctx,
 					spanName,
@@ -263,52 +267,4 @@ func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberW
 			return
 		}
 	}
-}
-
-// spanInfo returns a span name and all appropriate attributes from the gRPC
-// method and peer address.
-func spanInfo(fullMethod, peerAddress string) (string, []label.KeyValue) {
-	attrs := []label.KeyValue{semconv.RPCSystemGRPC}
-	name, mAttrs := parseFullMethod(fullMethod)
-	attrs = append(attrs, mAttrs...)
-	attrs = append(attrs, peerAttr(peerAddress)...)
-	return name, attrs
-}
-
-// peerAttr returns attributes about the peer address.
-func peerAttr(addr string) []label.KeyValue {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return []label.KeyValue(nil)
-	}
-
-	if host == "" {
-		host = "127.0.0.1"
-	}
-
-	return []label.KeyValue{
-		semconv.NetPeerIPKey.String(host),
-		semconv.NetPeerPortKey.String(port),
-	}
-}
-
-// parseFullMethod returns a span name following the OpenTelemetry semantic
-// conventions as well as all applicable span label.KeyValue attributes based
-// on a gRPC's FullMethod.
-func parseFullMethod(fullMethod string) (string, []label.KeyValue) {
-	name := strings.TrimLeft(fullMethod, "/")
-	parts := strings.SplitN(name, "/", 2)
-	if len(parts) != 2 {
-		// Invalid format, does not follow `/package.service/method`.
-		return name, []label.KeyValue(nil)
-	}
-
-	var attrs []label.KeyValue
-	if service := parts[0]; service != "" {
-		attrs = append(attrs, semconv.RPCServiceKey.String(service))
-	}
-	if method := parts[1]; method != "" {
-		attrs = append(attrs, semconv.RPCMethodKey.String(method))
-	}
-	return name, attrs
 }
