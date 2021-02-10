@@ -89,10 +89,6 @@ func NewClientWrapper(name string, opts ...Option) client.Wrapper {
 	if cfg.TracerProvider == nil {
 		cfg.TracerProvider = otel.GetTracerProvider()
 	}
-
-	if cfg.Propagators == nil {
-		cfg.Propagators = otel.GetTextMapPropagator()
-	}
 	tracer := cfg.TracerProvider.Tracer(name)
 	return func(c client.Client) client.Client {
 		return &clientWrapper{c, opts, tracer}
