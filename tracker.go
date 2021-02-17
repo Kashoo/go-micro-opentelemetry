@@ -3,8 +3,9 @@ package opentelemetry
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel/trace"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type tracker struct {

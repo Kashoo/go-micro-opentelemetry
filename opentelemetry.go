@@ -3,40 +3,70 @@ package opentelemetry
 import (
 	"context"
 	"fmt"
-	"github.com/asim/go-micro/v3/client"
-	"github.com/asim/go-micro/v3/logger"
-	"github.com/asim/go-micro/v3/metadata"
-	"github.com/asim/go-micro/v3/registry"
-	"github.com/asim/go-micro/v3/server"
+
+	"go.opentelemetry.io/otel/baggage"
+
+	"github.com/micro/go-micro/v2/client"
+	"github.com/micro/go-micro/v2/metadata"
+	"github.com/micro/go-micro/v2/registry"
+	"github.com/micro/go-micro/v2/server"
 	"go.opentelemetry.io/contrib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/label"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+const (
+	// Default OT Header names.
+	traceIDHeader      = "ot-tracer-traceid"
+	spanIDHeader       = "ot-tracer-spanid"
+	sampledHeader      = "ot-tracer-sampled"
+	traceID64BitsWidth = 64 / 4 // 16 hex character Trace ID.
+)
+
 const instrumentationName = "github.com/Kashoo/go-micro-opentelemetry"
 
-func getTraceFromCtx(ctx context.Context, opts ...Option) oteltrace.SpanContext {
-	md, ok := metadata.FromContext(ctx)
-	// if there is nothing from metadata
-	if !ok {
-		md = make(metadata.Metadata)
-	}
-	metadataCopy := metadata.Copy(md)
-	_, spanCtx := Extract(ctx, &metadataCopy, opts...)
+func getTraceFromCtx(ctx context.Context, opts ...Option) context.Context {
+	var (
+		sc  oteltrace.SpanContext
+		err error
+	)
+	md, _ := metadata.FromContext(ctx)
+	traceID, _ := md.Get(traceIDHeader)
+	spanID, _ := md.Get(spanIDHeader)
+	sampled, _ := md.Get(sampledHeader)
 
-	return spanCtx
+	sc, err = extract(traceID, spanID, sampled)
+	if err != nil || !sc.IsValid() {
+		return ctx
+	}
+	//_, spanCtx := Extract(ctx, &md, opts...)
+
+	return oteltrace.ContextWithRemoteSpanContext(ctx, sc)
 }
 
 func injectTraceIntoCtx(ctx context.Context, opts ...Option) context.Context {
-	md, ok := metadata.FromContext(ctx)
-	// if there is nothing from metadata
-	if !ok {
-		md = make(metadata.Metadata)
+	sc := oteltrace.SpanFromContext(ctx).SpanContext()
+	if !sc.TraceID.IsValid() || !sc.SpanID.IsValid() {
+		// don't bother injecting anything if either trace or span IDs are not valid
+		return ctx
 	}
-	metadataCopy := metadata.Copy(md)
-	Inject(ctx, &metadataCopy, opts...)
-	ctx = metadata.NewContext(ctx, metadataCopy)
+	md := make(metadata.Metadata)
+	md.Set(traceIDHeader, sc.TraceID.String()[len(sc.TraceID.String())-traceID64BitsWidth:])
+	md.Set(spanIDHeader, sc.SpanID.String())
+	if sc.IsSampled() {
+		md.Set(sampledHeader, "1")
+	} else {
+		md.Set(sampledHeader, "0")
+	}
+	m := baggage.Set(ctx)
+	mi := m.Iter()
+	for mi.Next() {
+		labl := mi.Label()
+		md.Set(fmt.Sprintf("ot-baggage-%s", labl.Key), labl.Value.Emit())
+	}
+	Inject(ctx, &md, opts...)
+
 	return ctx
 }
 
@@ -93,9 +123,9 @@ func NewClientWrapper(name string, opts ...Option) client.Wrapper {
 	}
 }
 
-func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
+func NewCallWrapper(servicename string, options ...Option) client.CallWrapper {
 	cfg := config{}
-	for _, opt := range opts {
+	for _, opt := range options {
 		opt(&cfg)
 	}
 	if cfg.TracerProvider == nil {
@@ -124,22 +154,13 @@ func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
 
 			spanName := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
 			defer func() { t.end(ctx, err) }()
-			spanCtx := getTraceFromCtx(ctx)
-			if spanCtx.IsValid() {
-				logger.Errorf("CALL METHOD VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
-					spanName,
-					topts...,
-				)
-			} else {
-				logger.Errorf("CALL METHOD NOT VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					ctx,
-					spanName,
-					topts...,
-				)
-			}
+			ctx = getTraceFromCtx(ctx, options...)
+
+			ctx, t.span = tracer.Start(
+				ctx,
+				spanName,
+				topts...,
+			)
 
 			if err = cf(ctx, node, req, rsp, opts); err != nil {
 
@@ -153,9 +174,9 @@ func NewCallWrapper(servicename string, opts ...Option) client.CallWrapper {
 	}
 }
 
-func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper {
+func NewHandlerWrapper(servicename string, options ...Option) server.HandlerWrapper {
 	cfg := config{}
-	for _, opt := range opts {
+	for _, opt := range options {
 		opt(&cfg)
 	}
 	if cfg.TracerProvider == nil {
@@ -183,22 +204,14 @@ func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 			spanName := fmt.Sprintf("rpc/%s/%s", req.Service(), req.Endpoint())
-			spanCtx := getTraceFromCtx(ctx)
-			if spanCtx.IsValid() {
-				logger.Errorf("HANDLER METHOD VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
-					spanName,
-					topts...,
-				)
-			} else {
-				logger.Errorf("HANDLER METHOD NOT VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					ctx,
-					spanName,
-					topts...,
-				)
-			}
+			ctx = getTraceFromCtx(ctx, options...)
+
+			ctx, t.span = tracer.Start(
+				ctx,
+				spanName,
+				topts...,
+			)
+
 			if err = fn(ctx, req, rsp); err != nil {
 				t.span.AddEvent(
 					spanName,
@@ -212,9 +225,9 @@ func NewHandlerWrapper(servicename string, opts ...Option) server.HandlerWrapper
 }
 
 // NewSubscriberWrapper accepts an opentelemetry Tracer and returns a Subscriber Wrapper
-func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberWrapper {
+func NewSubscriberWrapper(servicename string, options ...Option) server.SubscriberWrapper {
 	cfg := config{}
-	for _, opt := range opts {
+	for _, opt := range options {
 		opt(&cfg)
 	}
 	if cfg.TracerProvider == nil {
@@ -241,22 +254,13 @@ func NewSubscriberWrapper(servicename string, opts ...Option) server.SubscriberW
 			ctx = t.start(ctx, false)
 			defer func() { t.end(ctx, err) }()
 			spanName := fmt.Sprintf("rpc/pubsub/%s", p.Topic())
-			spanCtx := getTraceFromCtx(ctx)
-			if spanCtx.IsValid() {
-				logger.Errorf("SUBSCRIBE METHOD VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					oteltrace.ContextWithRemoteSpanContext(ctx, spanCtx),
-					spanName,
-					topts...,
-				)
-			} else {
-				logger.Errorf("SUBSCRIBE METHOD NOT VALID, %v", spanCtx)
-				ctx, t.span = tracer.Start(
-					ctx,
-					spanName,
-					topts...,
-				)
-			}
+			ctx = getTraceFromCtx(ctx, options...)
+
+			ctx, t.span = tracer.Start(
+				ctx,
+				spanName,
+				topts...,
+			)
 
 			if err = fn(ctx, p); err != nil {
 				t.span.AddEvent(
